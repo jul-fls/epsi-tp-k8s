@@ -121,11 +121,13 @@ spec:
   selector:
     app: logstash
   ports:
-    - protocol: TCP
+    - name: beats
+      protocol: TCP
       port: 5044
       targetPort: 5044
       nodePort: 32602
-    - protocol: TCP
+    - name: monitoring
+      protocol: TCP
       port: 9600
       targetPort: 9600
       nodePort: 32603
