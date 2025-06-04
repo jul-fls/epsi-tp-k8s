@@ -4,118 +4,128 @@ kind: Namespace
 metadata:
   name: elk
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: filebeat-config
-  namespace: elk
-  labels:
-    k8s-app: filebeat
-data:
-  filebeat.yml: |
-    filebeat.autodiscover:
-      providers:
-        - type: kubernetes
-          node: ${NODE_NAME}
-          hints.enabled: true
-    processors:
-      - add_cloud_metadata: {}
-    output.logstash:
-      hosts: ["logstash.elk.svc.cluster.local:5044"]
-
----
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: filebeat
+  name: elasticsearch
   namespace: elk
-  labels:
-    k8s-app: filebeat
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      k8s-app: filebeat
+      app: elasticsearch
   template:
     metadata:
       labels:
-        k8s-app: filebeat
+        app: elasticsearch
     spec:
-      serviceAccountName: filebeat
-      terminationGracePeriodSeconds: 30
       containers:
-        - name: filebeat
-          image: docker.elastic.co/beats/filebeat:7.17.14
-          args: [
-            "-c", "/etc/filebeat.yml",
-            "-e"
-          ]
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.14
+          ports:
+            - containerPort: 9200
           env:
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          resources:
-            limits:
-              memory: 200Mi
-              cpu: 100m
-            requests:
-              memory: 100Mi
-              cpu: 50m
-          volumeMounts:
-            - name: config
-              mountPath: /etc/filebeat.yml
-              subPath: filebeat.yml
-            - name: data
-              mountPath: /usr/share/filebeat/data
-            - name: varlog
-              mountPath: /var/log
-            - name: dockersock
-              mountPath: /var/lib/docker/containers
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: filebeat-config
-        - name: data
-          emptyDir: {}
-        - name: varlog
-          hostPath:
-            path: /var/log
-        - name: dockersock
-          hostPath:
-            path: /var/lib/docker/containers
-
+            - name: discovery.type
+              value: single-node
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
 ---
 apiVersion: v1
-kind: ServiceAccount
+kind: Service
 metadata:
-  name: filebeat
+  name: elasticsearch
   namespace: elk
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: filebeat
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: filebeat
-subjects:
-  - kind: ServiceAccount
-    name: filebeat
-    namespace: elk
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: filebeat
-rules:
-  - apiGroups: [""]
-    resources:
-      - pods
-      - namespaces
-    verbs:
-      - get
-      - watch
-      - list
+spec:
+  type: NodePort
+  selector:
+    app: elasticsearch
+  ports:
+    - protocol: TCP
+      port: 9200
+      targetPort: 9200
+      nodePort: 32600
 
+---
+# Kibana Deployment and NodePort Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.17.14
+          ports:
+            - containerPort: 5601
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch:9200
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  type: NodePort
+  selector:
+    app: kibana
+  ports:
+    - protocol: TCP
+      port: 5601
+      targetPort: 5601
+      nodePort: 32601
+
+---
+# Logstash Deployment and NodePort Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:7.17.14
+          ports:
+            - containerPort: 5044
+            - containerPort: 9600
+          command: ["logstash", "-e", "input { beats { port => 5044 } } output { stdout {} }"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: elk
+spec:
+  type: NodePort
+  selector:
+    app: logstash
+  ports:
+    - protocol: TCP
+      port: 5044
+      targetPort: 5044
+      nodePort: 32602
+    - protocol: TCP
+      port: 9600
+      targetPort: 9600
+      nodePort: 32603
