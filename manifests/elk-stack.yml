@@ -135,8 +135,8 @@ kind: ConfigMap
 metadata:
   name: filebeat-config
   namespace: elk
-labels:
-  k8s-app: filebeat
+  labels:
+    k8s-app: filebeat
 data:
   filebeat.yml: |
     filebeat.autodiscover:
@@ -248,8 +248,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: filebeat
-labels:
-  k8s-app: filebeat
+  labels:
+    k8s-app: filebeat
 rules:
   - apiGroups: [""]
     resources:
