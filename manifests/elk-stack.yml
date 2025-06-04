@@ -157,11 +157,6 @@ data:
         enabled: true
         paths:
           - /var/log/containers/*.log
-        parsers:
-          - ndjson:
-              keys_under_root: true
-              overwrite_keys: true
-        prospector.scanner.exclude_files: ['.gz$']
         symlinks: true
 ---
 apiVersion: apps/v1
